@@ -71,11 +71,15 @@ services:
       - bank_network
   
   simulation:
+    profiles: ["donotstart"]
+    # Using the profile approach shown above: The service will be skipped by default unless explicitly included with
+    # docker compose --profile donotstart up
     build:
       context: ./simulation
       dockerfile: Dockerfile
     environment:
       - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://bank_user:secure_password_123@postgres:5432/bank_recommendations
     networks:
       - bank_network
     depends_on:

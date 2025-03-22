@@ -10,3 +10,13 @@ GET http://localhost:8000/recommendations/cust001 HTTP/1.1
 ###
 GET http://localhost:8000/ HTTP/1.1
 
+
+####
+POST http://localhost:8000/simulate_usage
+Content-Type: application/json
+
+{
+  "customers": ["cust001", "cust002", "cust003", "cust004", "cust005"],
+  "num_events": 5,
+  "delay": 3.0
+}

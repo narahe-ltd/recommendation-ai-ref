@@ -1,18 +1,27 @@
 from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel  # Add this import
 import redis
 import psycopg2
 from sentence_transformers import SentenceTransformer
 import numpy as np
 import logging
 import time
-from typing import List, Dict
+from typing import List, Dict, Optional
 import os
+import random
+import asyncio
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI()
+
+# Pydantic model for simulation request
+class SimulateRequest(BaseModel):
+    customers: Optional[List[str]] = None
+    num_events: int = 10
+    delay: float = 2.0
 
 # Initialize model with retry mechanism
 def load_model(max_retries: int = 3, retry_delay: int = 10) -> SentenceTransformer:
@@ -50,6 +59,18 @@ def generate_embedding(text: str) -> List[float]:
         logger.warning("Empty text provided for embedding, using default empty string")
         text = ""
     return model.encode(text).tolist()
+
+# Default actions for simulation
+DEFAULT_ACTIONS = [
+    "used mobile app for transfer",
+    "applied for travel credit card",
+    "made online payment",
+    "checked investment options",
+    "used ATM",
+    "viewed loan rates",
+    "deposited check via app",
+    "activated cashback offer"
+]
 
 @app.get("/")
 async def root():
@@ -146,6 +167,62 @@ async def startup_event():
     except Exception as e:
         logger.error(f"Error during startup: {str(e)}")
         conn.rollback()
+    finally:
+        if 'cur' in locals():
+            cur.close()
+
+@app.post("/simulate_usage")
+async def simulate_usage(request: SimulateRequest = None):
+    """Simulate usage events for all provided customers or the first 2 from the database."""
+    try:
+        cur = conn.cursor()
+        
+        # Use request body or default to None
+        if request is None:
+            sim_request = SimulateRequest()
+        else:
+            sim_request = request
+        
+        # Get customers from input or database
+        if sim_request.customers is None or not sim_request.customers:
+            cur.execute("SELECT customer_id FROM customers ORDER BY customer_id LIMIT 2")
+            customer_list = [row[0] for row in cur.fetchall()]
+            if not customer_list:
+                raise HTTPException(status_code=404, detail="No customers found in database")
+            logger.info(f"Using default first 2 customers from database: {customer_list}")
+        else:
+            customer_list = sim_request.customers
+            logger.info(f"Using provided customers: {customer_list}")
+        
+        # Validate customers exist
+        cur.execute("SELECT customer_id FROM customers WHERE customer_id = ANY(%s)", (customer_list,))
+        valid_customers = [row[0] for row in cur.fetchall()]
+        invalid_customers = set(customer_list) - set(valid_customers)
+        if invalid_customers:
+            logger.warning(f"Invalid customers provided: {invalid_customers}")
+        
+        if not valid_customers:
+            raise HTTPException(status_code=400, detail="No valid customers provided or found")
+        
+        # Simulate events for each customer
+        total_events = 0
+        while total_events < 10 * len(valid_customers):
+            for customer in valid_customers:
+                action = random.choice(DEFAULT_ACTIONS)
+                event = f"{customer}:{action}"
+                redis_client.lpush("usage_queue", event)
+                logger.info(f"Simulated event: {event}")
+                total_events += 1
+            await asyncio.sleep(sim_request.delay)   # 2 seconds delay after one cycle of customers
+        
+        return {"message": f"Simulated {sim_request.num_events} usage events for customers: {valid_customers}"}
+    
+    except psycopg2.Error as e:
+        logger.error(f"Database error during simulation: {str(e)}")
+        raise HTTPException(status_code=500, detail="Database error")
+    except Exception as e:
+        logger.error(f"Error during simulation: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
         if 'cur' in locals():
             cur.close()
