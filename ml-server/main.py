@@ -94,11 +94,11 @@ async def get_recommendations(customer_id: str):
             embedding = customer_data[2]
             logger.info(f"Using existing embedding for customer {customer_id}")
         
-        # Get similar products/services
+        # Get similar products/services, casting the input embedding to vector
         cur.execute("""
             SELECT product_id, description 
             FROM products 
-            ORDER BY embedding <=> %s 
+            ORDER BY embedding <=> %s::vector 
             LIMIT 5
         """, (embedding,))
         recommendations = cur.fetchall()
@@ -150,7 +150,6 @@ async def startup_event():
         if 'cur' in locals():
             cur.close()
 
-# Ensure connection cleanup
 @app.on_event("shutdown")
 async def shutdown_event():
     conn.close()

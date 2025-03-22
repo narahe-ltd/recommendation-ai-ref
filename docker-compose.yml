@@ -1,79 +1,43 @@
-# docker-compose.yml
-version: '3.8'
+version: '3.8'  # Make sure we're using a recent version
 
 services:
-  # PostgreSQL database for customer data and transactions
-  postgres:
-    image: pgvector/pgvector:0.8.0-pg17  # Use a pre-built image with pgvector
-    environment:
-      POSTGRES_USER: bank_user
-      POSTGRES_PASSWORD: secure_password_123
-      POSTGRES_DB: bank_recommendations
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "sh -c 'pg_isready -U bank_user -d bank_recommendations'"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    # entrypoint: ["sh", "-c", "docker-entrypoint.sh postgres & sleep 10 && psql -U bank_user -d bank_recommendations -f /docker-entrypoint-initdb.d/init.sql"]
-  # PostgreSQL initialization service
   postgres-init:
     image: postgres:latest
-    depends_on:
-      postgres:
-        condition: service_healthy
     environment:
       PGPASSWORD: secure_password_123
     command: >
       psql -h postgres -U bank_user -d bank_recommendations -f /init.sql
     volumes:
       - ./init.sql:/init.sql
+    networks:
+      - bank_network
 
-  # Redis for real-time caching and message queue
-  redis:
-    image: redis:7
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-
-  # ML Model Server (using FastAPI)
   ml-server:
     build:
       context: ./ml-server
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_started
     environment:
       - DATABASE_URL=postgresql://bank_user:secure_password_123@postgres:5432/bank_recommendations
       - REDIS_URL=redis://redis:6379
     volumes:
       - ./ml-server:/app
+    networks:
+      - bank_network
 
-  # Real-time usage tracking service
   usage-tracker:
     build:
       context: ./usage-tracker
       dockerfile: Dockerfile
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_started
     environment:
       - REDIS_URL=redis://redis:6379
       - DATABASE_URL=postgresql://bank_user:secure_password_123@postgres:5432/bank_recommendations
     volumes:
       - ./usage-tracker:/app
-  # Frontend application
+    networks:
+      - bank_network
+
   frontend:
     build:
       context: ./frontend
@@ -83,12 +47,10 @@ services:
     volumes:
       - ./frontend/public:/app/public
       - ./frontend/src:/app/src
-      
-    depends_on:
-      postgres:
-        condition: service_healthy
+    networks:
+      - bank_network
+
   db-ui:
-    # image: adminer
     image: dpage/pgadmin4:9.1.0
     restart: always
     ports:
@@ -99,10 +61,9 @@ services:
       PGADMIN_DEFAULT_PASSWORD: password
     volumes:
       - ./test/db/servers.json:/pgadmin4/servers.json
-    depends_on:
-      postgres:
-        condition: service_healthy
+    networks:
+      - bank_network
 
-volumes:
-  postgres_data:
-  redis_data:
+networks:
+  bank_network:
+    external: true

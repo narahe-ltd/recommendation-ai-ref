@@ -1,0 +1,41 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  # PostgreSQL database for customer data and transactions
+  postgres:
+    image: pgvector/pgvector:0.8.0-pg17  # Use a pre-built image with pgvector
+    environment:
+      POSTGRES_USER: bank_user
+      POSTGRES_PASSWORD: secure_password_123
+      POSTGRES_DB: bank_recommendations
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "sh -c 'pg_isready -U bank_user -d bank_recommendations'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - bank_network
+  
+  # Redis for real-time caching and message queue
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - bank_network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  bank_network:    # Define the network properly
+    driver: bridge
+    name: bank_network
