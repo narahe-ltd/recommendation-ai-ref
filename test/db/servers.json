@@ -1,0 +1,14 @@
+{
+    "Servers": {
+      "1": {
+        "Name": "local db",
+        "Group": "Servers",
+        "Host": "postgres",
+        "Port": 5432,
+        "MaintenanceDB": "bank_recommendations",
+        "Username": "bank_user",
+        "SSLMode": "prefer"
+        }
+    }
+  }
+  

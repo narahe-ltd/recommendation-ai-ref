@@ -1,0 +1,91 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  # PostgreSQL database for customer data and transactions
+  postgres:
+    image: ankane/pgvector:latest  # Use a pre-built image with pgvector    environment:
+    environment:
+      POSTGRES_USER: bank_user
+      POSTGRES_PASSWORD: secure_password_123
+      POSTGRES_DB: bank_recommendations
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "sh -c 'pg_isready -U bank_user -d bank_recommendations'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis for real-time caching and message queue
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  # ML Model Server (using FastAPI)
+  ml-server:
+    build:
+      context: ./ml-server
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      - DATABASE_URL=postgresql://bank_user:secure_password_123@postgres:5432/bank_recommendations
+      - REDIS_URL=redis://redis:6379
+    volumes:
+      - ./ml-server:/app
+  # Real-time usage tracking service
+  usage-tracker:
+    build:
+      context: ./usage-tracker
+      dockerfile: Dockerfile
+    depends_on:
+      - redis
+      - postgres
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://bank_user:secure_password_123@postgres:5432/bank_recommendations
+    volumes:
+      - ./usage-tracker:/app
+  # Frontend application
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend/public:/app/public
+      - ./frontend/src:/app/src
+      
+    depends_on:
+      postgres:
+        condition: service_healthy
+  db-ui:
+    # image: adminer
+    image: dpage/pgadmin4:9.1.0
+    restart: always
+    ports:
+      - 5050:80
+    environment:
+      DATABASE_URL: postgresql://bank_user:secure_password_123@postgres:5432/bank_recommendations
+      PGADMIN_DEFAULT_EMAIL: user@domain.com
+      PGADMIN_DEFAULT_PASSWORD: password
+    volumes:
+      - ./test/db/servers.json:/pgadmin4/servers.json
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:

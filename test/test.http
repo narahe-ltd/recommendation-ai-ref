@@ -1,0 +1,14 @@
+POST http://localhost:8000/encode HTTP/1.1
+content-type: application/json
+
+["test text"]
+
+
+###
+GET http://localhost:8000/recommendations/cust001 HTTP/1.1
+
+###
+GET http://localhost:5003/movies HTTP/1.1
+
+
+http://localhost:8000/encode
