@@ -4,14 +4,13 @@ version: '3.8'
 services:
   # PostgreSQL database for customer data and transactions
   postgres:
-    image: ankane/pgvector:latest  # Use a pre-built image with pgvector    environment:
+    image: pgvector/pgvector:0.8.0-pg17  # Use a pre-built image with pgvector
     environment:
       POSTGRES_USER: bank_user
       POSTGRES_PASSWORD: secure_password_123
       POSTGRES_DB: bank_recommendations
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
       - "5432:5432"
     healthcheck:
@@ -19,6 +18,19 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    # entrypoint: ["sh", "-c", "docker-entrypoint.sh postgres & sleep 10 && psql -U bank_user -d bank_recommendations -f /docker-entrypoint-initdb.d/init.sql"]
+  # PostgreSQL initialization service
+  postgres-init:
+    image: postgres:latest
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: secure_password_123
+    command: >
+      psql -h postgres -U bank_user -d bank_recommendations -f /init.sql
+    volumes:
+      - ./init.sql:/init.sql
 
   # Redis for real-time caching and message queue
   redis:
@@ -36,21 +48,26 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
     environment:
       - DATABASE_URL=postgresql://bank_user:secure_password_123@postgres:5432/bank_recommendations
       - REDIS_URL=redis://redis:6379
     volumes:
       - ./ml-server:/app
+
   # Real-time usage tracking service
   usage-tracker:
     build:
       context: ./usage-tracker
       dockerfile: Dockerfile
     depends_on:
-      - redis
-      - postgres
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
     environment:
       - REDIS_URL=redis://redis:6379
       - DATABASE_URL=postgresql://bank_user:secure_password_123@postgres:5432/bank_recommendations

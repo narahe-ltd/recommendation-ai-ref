@@ -67,7 +67,6 @@ async def encode_text(texts: List[str]) -> Dict[str, List[List[float]]]:
 @app.get("/recommendations/{customer_id}")
 async def get_recommendations(customer_id: str):
     try:
-        # Get customer data from PostgreSQL
         cur = conn.cursor()
         cur.execute("""
             SELECT transaction_history, preferences, embedding 
@@ -103,10 +102,11 @@ async def get_recommendations(customer_id: str):
             LIMIT 5
         """, (embedding,))
         recommendations = cur.fetchall()
+        logger.info(f"Found {len(recommendations)} recommendations for {customer_id}")
         
         # Cache results
         redis_client.setex(f"recs:{customer_id}", 3600, str(recommendations))
-        logger.info(f"Recommendations generated and cached for customer {customer_id}")
+        logger.info(f"Recommendations cached for customer {customer_id}")
         
         return {"customer_id": customer_id, "recommendations": recommendations}
     
@@ -128,7 +128,9 @@ async def startup_event():
         cur = conn.cursor()
         cur.execute("SELECT product_id, description, embedding FROM products")
         products = cur.fetchall()
+        logger.info(f"Found {len(products)} products to process")
         
+        updated = 0
         for prod_id, desc, emb in products:
             if emb is None and desc:
                 embedding = generate_embedding(desc)
@@ -137,8 +139,10 @@ async def startup_event():
                     SET embedding = %s::vector 
                     WHERE product_id = %s
                 """, (embedding, prod_id))
+                updated += 1
                 logger.info(f"Generated embedding for product {prod_id}")
         conn.commit()
+        logger.info(f"Updated embeddings for {updated} products")
     except Exception as e:
         logger.error(f"Error during startup: {str(e)}")
         conn.rollback()
