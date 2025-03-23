@@ -22,7 +22,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI()
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(CORSMiddleware, allow_origins=os.getenv("CORS_ALLOW_ORIGINS", "*").split(","), allow_methods=["*"], allow_headers=["*"])
 
 # Pydantic model for simulation request
 class SimulateRequest(BaseModel):

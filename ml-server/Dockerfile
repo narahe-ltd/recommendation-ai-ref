@@ -14,6 +14,9 @@ COPY requirements.txt .
 # Install pip packages with increased timeout
 RUN pip install --no-cache-dir --timeout 100 -r requirements.txt
 
+# Install gunicorn for production server
+RUN pip install --no-cache-dir gunicorn
+
 # Pre-download the model during build
 RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
 
@@ -28,4 +31,5 @@ ENV HF_HUB_ENABLE_HF_TRANSFER=1
 EXPOSE 8000
 
 # Command to run the application
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Use gunicorn with uvicorn workers for production
+CMD ["gunicorn", "-k", "uvicorn.workers.UvicornWorker", "main:app", "--bind", "0.0.0.0:8000", "--workers", "4"]
