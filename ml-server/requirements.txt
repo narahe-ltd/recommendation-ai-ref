@@ -9,3 +9,4 @@ transformers
 numpy
 scikit-learn
 pandas
+aiohttp

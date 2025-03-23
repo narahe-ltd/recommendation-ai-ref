@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel  # Add this import
+from pydantic import BaseModel
 import redis
 import psycopg2
 from sentence_transformers import SentenceTransformer
@@ -10,12 +10,15 @@ from typing import List, Dict, Optional
 import os
 import random
 import asyncio
+import aiohttp  # For async HTTP requests to xAI API (if available)
+from fastapi.middleware.cors import CORSMiddleware
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI()
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 # Pydantic model for simulation request
 class SimulateRequest(BaseModel):
@@ -23,7 +26,7 @@ class SimulateRequest(BaseModel):
     num_events: int = 10
     delay: float = 2.0
 
-# Initialize model with retry mechanism
+# Initialize SentenceTransformer model
 def load_model(max_retries: int = 3, retry_delay: int = 10) -> SentenceTransformer:
     for attempt in range(max_retries):
         try:
@@ -53,12 +56,51 @@ conn = psycopg2.connect(
     host="postgres"
 )
 
+# Placeholder for xAI API key (replace with actual key if available)
+XAI_API_KEY = "xai-PNuv1eJ0jRheIYbZJvsnk8GklNuvi0bv9oYxemp5XwZ2v77rDaC06V5T1ib5eqbwVUGFMgDT7UVzOsJz"
+XAI_API_URL = "https://api.xai.com/v1/generate"  # Hypothetical endpoint
+
 def generate_embedding(text: str) -> List[float]:
     """Generate embedding from text, handling empty inputs."""
     if not text.strip():
         logger.warning("Empty text provided for embedding, using default empty string")
         text = ""
     return model.encode(text).tolist()
+
+async def generate_recommendation_explanation(customer_data: tuple, products: List[tuple]) -> str:
+    """Generate a natural language explanation using a generative model (Grok placeholder)."""
+    transaction_history, preferences = customer_data
+    product_str = "\n".join([f"- {p[0]}: {p[1]}" for p in products])
+    prompt = (
+        f"Customer Profile:\n"
+        f"Transaction History: {transaction_history}\n"
+        f"Preferences: {preferences}\n\n"
+        f"Recommended Products:\n{product_str}\n\n"
+        f"Explain why these products are suitable for this customer in a concise, friendly tone."
+    )
+    
+    # Placeholder generation (replace with actual xAI API call)
+    try:
+        async with aiohttp.ClientSession() as session:
+            # Hypothetical xAI API call (uncomment and adjust if you have access)
+            """
+            async with session.post(
+                XAI_API_URL,
+                headers={"Authorization": f"Bearer {XAI_API_KEY}", "Content-Type": "application/json"},
+                json={"prompt": prompt, "max_tokens": 150}
+            ) as response:
+                result = await response.json()
+                return result.get("text", "Error generating explanation")
+            """
+            # Simulated Grok response for now
+            return (
+                f"Based on your {transaction_history.lower()} and love for {preferences.lower()}, "
+                f"these products are a great fit! {products[0][1]} matches your needs perfectly, "
+                f"while {products[1][1]} offers additional benefits you’ll enjoy."
+            )
+    except Exception as e:
+        logger.error(f"Error generating explanation: {str(e)}")
+        return "Sorry, I couldn’t generate a detailed explanation at this time."
 
 # Default actions for simulation
 DEFAULT_ACTIONS = [
@@ -125,11 +167,19 @@ async def get_recommendations(customer_id: str):
         recommendations = cur.fetchall()
         logger.info(f"Found {len(recommendations)} recommendations for {customer_id}")
         
+        # Generate explanation using RAG
+        explanation = await generate_recommendation_explanation(
+            (customer_data[0], customer_data[1]), recommendations
+        )
         # Cache results
         redis_client.setex(f"recs:{customer_id}", 3600, str(recommendations))
         logger.info(f"Recommendations cached for customer {customer_id}")
         
-        return {"customer_id": customer_id, "recommendations": recommendations}
+        return {
+            "customer_id": customer_id,
+            "recommendations": recommendations,
+            "explanation": explanation
+        }
     
     except psycopg2.Error as e:
         logger.error(f"Database error: {str(e)}")
@@ -203,7 +253,7 @@ async def simulate_usage(request: SimulateRequest = None):
         
         if not valid_customers:
             raise HTTPException(status_code=400, detail="No valid customers provided or found")
-        
+
         # Simulate events for each customer
         total_events = 0
         while total_events < 10 * len(valid_customers):
