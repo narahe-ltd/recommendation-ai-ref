@@ -2,17 +2,22 @@ import redis
 import psycopg2
 from time import sleep
 import logging
+from dotenv import load_dotenv
+import os
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-redis_client = redis.Redis.from_url("redis://redis:6379")
+redis_client = redis.Redis.from_url(os.getenv("REDIS_URL"))
 conn = psycopg2.connect(
-    dbname="bank_recommendations",
-    user="bank_user",
-    password="secure_password_123",
-    host="postgres"
+    dbname=os.getenv("DB_NAME"),
+    user=os.getenv("DB_USER"),
+    password=os.getenv("DB_PASSWORD"),
+    host=os.getenv("DB_HOST")
 )
 
 def update_customer_history(customer_id: str, action: str):
