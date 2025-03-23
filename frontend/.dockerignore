@@ -1,2 +1,14 @@
+.env
 *.env
-*.env.*
+*.env.local
+*.env.development
+*.env.test
+*.env.production
+*.log
+node_modules
+build
+dist
+coverage
+*.tmp
+*.cache
+
