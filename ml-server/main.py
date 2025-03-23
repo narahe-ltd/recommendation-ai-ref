@@ -8,10 +8,14 @@ import logging
 import time
 from typing import List, Dict, Optional
 import os
+from dotenv import load_dotenv
 import random
 import asyncio
-import aiohttp  # For async HTTP requests to xAI API (if available)
+import aiohttp  # For async HTTP requests to OpenAI API
 from fastapi.middleware.cors import CORSMiddleware
+
+# Load environment variables
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -46,19 +50,20 @@ except Exception as e:
     logger.error(f"Failed to initialize model: {str(e)}")
     raise
 
-redis_client = redis.Redis.from_url("redis://redis:6379")
-
 # Database connection
 conn = psycopg2.connect(
-    dbname="bank_recommendations",
-    user="bank_user",
-    password="secure_password_123",
-    host="postgres"
+    dbname=os.getenv('POSTGRES_DB', 'bank_recommendations'),
+    user=os.getenv('POSTGRES_USER', 'bank_user'),
+    password=os.getenv('POSTGRES_PASSWORD', 'secure_password_123'),
+    host=os.getenv('POSTGRES_HOST', 'postgres')
 )
 
-# Placeholder for xAI API key (replace with actual key if available)
-XAI_API_KEY = "xai-PNuv1eJ0jRheIYbZJvsnk8GklNuvi0bv9oYxemp5XwZ2v77rDaC06V5T1ib5eqbwVUGFMgDT7UVzOsJz"
-XAI_API_URL = "https://api.xai.com/v1/generate"  # Hypothetical endpoint
+# Redis connection
+redis_client = redis.Redis.from_url(os.getenv('REDIS_URL', 'redis://redis:6379'))
+
+# OpenAI API configuration
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+OPENAI_API_URL = os.getenv('OPENAI_API_URL', 'https://api.openai.com/v1/chat/completions')
 
 def generate_embedding(text: str) -> List[float]:
     """Generate embedding from text, handling empty inputs."""
@@ -68,7 +73,7 @@ def generate_embedding(text: str) -> List[float]:
     return model.encode(text).tolist()
 
 async def generate_recommendation_explanation(customer_data: tuple, products: List[tuple]) -> str:
-    """Generate a natural language explanation using a generative model (Grok placeholder)."""
+    """Generate a natural language explanation using ChatGPT."""
     transaction_history, preferences = customer_data
     product_str = "\n".join([f"- {p[0]}: {p[1]}" for p in products])
     prompt = (
@@ -76,31 +81,36 @@ async def generate_recommendation_explanation(customer_data: tuple, products: Li
         f"Transaction History: {transaction_history}\n"
         f"Preferences: {preferences}\n\n"
         f"Recommended Products:\n{product_str}\n\n"
-        f"Explain why these products are suitable for this customer in a concise, friendly tone."
+        f"Explain in a concise, friendly tone why these products are suitable for this customer."
     )
     
-    # Placeholder generation (replace with actual xAI API call)
     try:
         async with aiohttp.ClientSession() as session:
-            # Hypothetical xAI API call (uncomment and adjust if you have access)
-            """
             async with session.post(
-                XAI_API_URL,
-                headers={"Authorization": f"Bearer {XAI_API_KEY}", "Content-Type": "application/json"},
-                json={"prompt": prompt, "max_tokens": 150}
+                OPENAI_API_URL,
+                headers={
+                    "Authorization": f"Bearer {OPENAI_API_KEY}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": "gpt-3.5-turbo",  # Or "gpt-4" if you have access
+                    "messages": [
+                        {"role": "system", "content": "You are a helpful banking assistant."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    "max_tokens": 150,
+                    "temperature": 0.7
+                }
             ) as response:
                 result = await response.json()
-                return result.get("text", "Error generating explanation")
-            """
-            # Simulated Grok response for now
-            return (
-                f"Based on your {transaction_history.lower()} and love for {preferences.lower()}, "
-                f"these products are a great fit! {products[0][1]} matches your needs perfectly, "
-                f"while {products[1][1]} offers additional benefits you’ll enjoy."
-            )
+                if "choices" in result and len(result["choices"]) > 0:
+                    return result["choices"][0]["message"]["content"].strip()
+                else:
+                    logger.error(f"OpenAI API error: {result}")
+                    return "Sorry, I couldn't generate a detailed explanation at this time."
     except Exception as e:
-        logger.error(f"Error generating explanation: {str(e)}")
-        return "Sorry, I couldn’t generate a detailed explanation at this time."
+        logger.error(f"Error generating explanation with ChatGPT: {str(e)}")
+        return "Sorry, I couldn't generate a detailed explanation at this time."
 
 # Default actions for simulation
 DEFAULT_ACTIONS = [
@@ -167,7 +177,7 @@ async def get_recommendations(customer_id: str):
         recommendations = cur.fetchall()
         logger.info(f"Found {len(recommendations)} recommendations for {customer_id}")
         
-        # Generate explanation using RAG
+        # Generate explanation using ChatGPT
         explanation = await generate_recommendation_explanation(
             (customer_data[0], customer_data[1]), recommendations
         )
