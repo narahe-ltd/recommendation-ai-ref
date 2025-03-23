@@ -19,7 +19,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./ml-server:/app
+      - ./ml-server/main.py:/app/main.py
     networks:
       - bank_network
     env_file:
