@@ -13,7 +13,7 @@ function App() {
     setLoading(true);
     setError(null);
     try {
-      const response = await axios.get(`http://localhost:8000/recommendations/${id}`);
+      const response = await axios.get(`${process.env.REACT_APP_API_BASE_URL}/recommendations/${id}`);
       setRecommendations(response.data.recommendations);
       setExplanation(response.data.explanation);
     } catch (err) {
@@ -27,7 +27,7 @@ function App() {
     setError(null);
     try {
       const customerList = customerIds ? customerIds.split(',').map(id => id.trim()) : null;
-      await axios.post('http://localhost:8000/simulate_usage', 
+      await axios.post(`${process.env.REACT_APP_API_BASE_URL}/simulate_usage`, 
         { customers: customerList, num_events: 10, delay: 2.0 }, 
         { headers: { 'Content-Type': 'application/json' } }
       );
