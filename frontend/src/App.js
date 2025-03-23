@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-
+const apiUrl = process.env.REACT_APP_API_BASE_URL;
 function App() {
   const [customerIds, setCustomerIds] = useState('');
   const [recommendations, setRecommendations] = useState([]);
@@ -13,9 +13,14 @@ function App() {
     setLoading(true);
     setError(null);
     try {
-      const response = await axios.get(`${process.env.REACT_APP_API_BASE_URL}/recommendations/${id}`);
-      setRecommendations(response.data.recommendations);
-      setExplanation(response.data.explanation);
+      console.log('API Base URL:', apiUrl); // Updated log to show the resolved URL
+      const response = await axios.get(`${apiUrl}/recommendations/${id}`);
+      if (response.data) {
+        setRecommendations(response.data.recommendations || []); // Ensure recommendations is an array
+        setExplanation(response.data.explanation || ''); // Ensure explanation is a string
+      } else {
+        setError('No data received from the API');
+      }
     } catch (err) {
       setError(err.response?.data?.detail || 'Error fetching recommendations');
     }
@@ -27,7 +32,7 @@ function App() {
     setError(null);
     try {
       const customerList = customerIds ? customerIds.split(',').map(id => id.trim()) : null;
-      await axios.post(`${process.env.REACT_APP_API_BASE_URL}/simulate_usage`, 
+      await axios.post(`${apiUrl}/simulate_usage`, 
         { customers: customerList, num_events: 10, delay: 2.0 }, 
         { headers: { 'Content-Type': 'application/json' } }
       );

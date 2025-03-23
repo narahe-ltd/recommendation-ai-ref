@@ -18,25 +18,23 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
-    environment:
-      - DATABASE_URL=postgresql://bank_user:secure_password_123@postgres:5432/bank_recommendations
-      - REDIS_URL=redis://redis:6379
     volumes:
       - ./ml-server:/app
     networks:
       - bank_network
+    env_file:
+      - ./ml-server/.env
 
   usage-tracker:
     build:
       context: ./usage-tracker
       dockerfile: Dockerfile
-    environment:
-      - REDIS_URL=redis://redis:6379
-      - DATABASE_URL=postgresql://bank_user:secure_password_123@postgres:5432/bank_recommendations
     volumes:
       - ./usage-tracker:/app
     networks:
       - bank_network
+    env_file:
+      - ./usage-tracker/.env
 
   frontend:
     build:
@@ -55,6 +53,8 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+    env_file:
+      - ./frontend/.env
 
   db-ui:
     image: dpage/pgadmin4:9.1.0
@@ -87,6 +87,7 @@ services:
         condition: service_healthy
     volumes:
       - ./simulation:/app
+
 networks:
   bank_network:
     external: true
