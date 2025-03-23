@@ -1,19 +1,26 @@
+
+# Health check
+GET http://localhost:8000/health
+
+###
 POST http://localhost:8000/encode HTTP/1.1
 content-type: application/json
+X-API-Key: your_secret_api_key
 
 ["test text"]
 
-
 ###
 GET http://localhost:8000/recommendations/cust001 HTTP/1.1
+X-API-Key: your_secret_api_key
 
 ###
 GET http://localhost:8000/ HTTP/1.1
-
+X-API-Key: your_secret_api_key
 
 ####
 POST http://localhost:8000/simulate_usage
 Content-Type: application/json
+X-API-Key: your_secret_api_key
 
 {
   "customers": ["cust001", "cust002", "cust003", "cust004", "cust005"],

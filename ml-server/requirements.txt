@@ -10,4 +10,7 @@ numpy==2.0.2
 scikit-learn==1.6.1
 pandas==2.2.3
 aiohttp==3.11.4
-dotenv==0.9.9
+# dotenv==0.9.9
+slowapi
+pydantic-settings
+python-dotenv

@@ -1,18 +1,23 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Request
+from fastapi.security import APIKeyHeader
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
+from pydantic_settings import BaseSettings
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
 import redis
-import psycopg2
+import psycopg2.pool
 from sentence_transformers import SentenceTransformer
 import numpy as np
 import logging
 import time
-from typing import List, Dict, Optional
 import os
 from dotenv import load_dotenv
 import random
 import asyncio
-import aiohttp  # For async HTTP requests to OpenAI API
-from fastapi.middleware.cors import CORSMiddleware
+import aiohttp
+import json
+from typing import List, Optional, Dict
 
 # Load environment variables
 load_dotenv()
@@ -21,14 +26,51 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI()
-app.add_middleware(CORSMiddleware, allow_origins=os.getenv("CORS_ALLOW_ORIGINS", "*").split(","), allow_methods=["*"], allow_headers=["*"])
+class JsonFormatter(logging.Formatter):
+    def format(self, record):
+        return json.dumps({"time": self.formatTime(record), "level": record.levelname, "message": record.msg})
 
-# Pydantic model for simulation request
+# Ensure a handler exists before setting formatter
+if not logger.handlers:  # Check if handlers are empty
+    handler = logging.StreamHandler()
+    handler.setFormatter(JsonFormatter())
+    logger.addHandler(handler)
+else:
+    logger.handlers[0].setFormatter(JsonFormatter())
+
+# Configuration via environment variables
+class Settings(BaseSettings):
+    openai_api_key: str
+    postgres_db: str = "bank_recommendations"
+    postgres_user: str = "bank_user"
+    postgres_password: str
+    postgres_host: str = "postgres"
+    redis_url: str = "redis://redis:6379"
+    api_key: str  # For endpoint authentication
+    cors_allow_origins: str = "*"  # Comma-separated list in .env
+    openai_api_url: str = "https://api.openai.com/v1/chat/completions"
+
+    class Config:
+        env_file = ".env"
+        extra = "ignore"
+
+settings = Settings()
+
+app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_allow_origins.split(","),
+    allow_methods=["*"],
+    allow_headers=["*"]
+)
+app.state.limiter = Limiter(key_func=get_remote_address)
+app.add_exception_handler(429, _rate_limit_exceeded_handler)
+
+# Pydantic model for simulation request with validation
 class SimulateRequest(BaseModel):
     customers: Optional[List[str]] = None
-    num_events: int = 10
-    delay: float = 2.0
+    num_events: int = Field(default=10, ge=1, le=100)
+    delay: float = Field(default=2.0, ge=0.1, le=10.0)
 
 # Initialize SentenceTransformer model
 def load_model(max_retries: int = 3, retry_delay: int = 10) -> SentenceTransformer:
@@ -50,20 +92,21 @@ except Exception as e:
     logger.error(f"Failed to initialize model: {str(e)}")
     raise
 
-# Database connection
-conn = psycopg2.connect(
-    dbname=os.getenv('POSTGRES_DB', 'bank_recommendations'),
-    user=os.getenv('POSTGRES_USER', 'bank_user'),
-    password=os.getenv('POSTGRES_PASSWORD', 'secure_password_123'),
-    host=os.getenv('POSTGRES_HOST', 'postgres')
+# Database and Redis connections
+db_pool = psycopg2.pool.SimpleConnectionPool(1, 20,
+    dbname=settings.postgres_db,
+    user=settings.postgres_user,
+    password=settings.postgres_password,
+    host=settings.postgres_host
 )
+redis_client = redis.Redis.from_url(settings.redis_url)
 
-# Redis connection
-redis_client = redis.Redis.from_url(os.getenv('REDIS_URL', 'redis://redis:6379'))
-
-# OpenAI API configuration
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
-OPENAI_API_URL = os.getenv('OPENAI_API_URL', 'https://api.openai.com/v1/chat/completions')
+# API Key authentication
+api_key_header = APIKeyHeader(name="X-API-Key")
+async def verify_api_key(api_key: str = Depends(api_key_header)):
+    if api_key != settings.api_key:
+        raise HTTPException(status_code=401, detail="Invalid API Key")
+    return api_key
 
 def generate_embedding(text: str) -> List[float]:
     """Generate embedding from text, handling empty inputs."""
@@ -72,9 +115,23 @@ def generate_embedding(text: str) -> List[float]:
         text = ""
     return model.encode(text).tolist()
 
+async def update_embedding(customer_id: str, text: str, conn):
+    """Background task to update customer embedding."""
+    embedding = generate_embedding(text)
+    cur = conn.cursor()
+    cur.execute("UPDATE customers SET embedding = %s::vector WHERE customer_id = %s", (embedding, customer_id))
+    conn.commit()
+    cur.close()
+
 async def generate_recommendation_explanation(customer_data: tuple, products: List[tuple]) -> str:
-    """Generate a natural language explanation using ChatGPT."""
+    """Generate explanation using ChatGPT with retries and caching."""
     transaction_history, preferences = customer_data
+    cache_key = f"exp:{hash(str(customer_data) + str(products))}"
+    cached = redis_client.get(cache_key)
+    if cached:
+        logger.info("Returning cached explanation")
+        return cached.decode()
+    
     product_str = "\n".join([f"- {p[0]}: {p[1]}" for p in products])
     prompt = (
         f"Customer Profile:\n"
@@ -84,33 +141,37 @@ async def generate_recommendation_explanation(customer_data: tuple, products: Li
         f"Explain in a concise, friendly tone why these products are suitable for this customer."
     )
     
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                OPENAI_API_URL,
-                headers={
-                    "Authorization": f"Bearer {OPENAI_API_KEY}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "model": "gpt-3.5-turbo",  # Or "gpt-4" if you have access
-                    "messages": [
-                        {"role": "system", "content": "You are a helpful banking assistant."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    "max_tokens": 150,
-                    "temperature": 0.7
-                }
-            ) as response:
-                result = await response.json()
-                if "choices" in result and len(result["choices"]) > 0:
-                    return result["choices"][0]["message"]["content"].strip()
-                else:
-                    logger.error(f"OpenAI API error: {result}")
-                    return "Sorry, I couldn't generate a detailed explanation at this time."
-    except Exception as e:
-        logger.error(f"Error generating explanation with ChatGPT: {str(e)}")
-        return "Sorry, I couldn't generate a detailed explanation at this time."
+    for attempt in range(3):
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    settings.openai_api_url,
+                    headers={
+                        "Authorization": f"Bearer {settings.openai_api_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": "gpt-3.5-turbo",
+                        "messages": [
+                            {"role": "system", "content": "You are a helpful banking assistant."},
+                            {"role": "user", "content": prompt}
+                        ],
+                        "max_tokens": 150,
+                        "temperature": 0.7
+                    }
+                ) as response:
+                    result = await response.json()
+                    if "choices" in result and len(result["choices"]) > 0:
+                        explanation = result["choices"][0]["message"]["content"].strip()
+                        redis_client.setex(cache_key, 3600, explanation)
+                        return explanation
+                    else:
+                        logger.error(f"OpenAI API error: {result}")
+        except Exception as e:
+            if attempt == 2:
+                logger.error(f"Failed after 3 attempts: {str(e)}")
+                return "Sorry, I couldn’t generate a detailed explanation at this time."
+            await asyncio.sleep(2 ** attempt)  # Exponential backoff
 
 # Default actions for simulation
 DEFAULT_ACTIONS = [
@@ -128,8 +189,24 @@ DEFAULT_ACTIONS = [
 async def root():
     return {"status": "healthy", "model": "all-MiniLM-L6-v2"}
 
-@app.post("/encode")
-async def encode_text(texts: List[str]) -> Dict[str, List[List[float]]]:
+@app.get("/health")
+async def health_check():
+    conn = db_pool.getconn()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT 1")
+        redis_client.ping()
+        return {"status": "healthy", "database": "ok", "redis": "ok"}
+    except Exception as e:
+        logger.error(f"Health check failed: {str(e)}")
+        return {"status": "unhealthy", "error": str(e)}
+    finally:
+        cur.close()
+        db_pool.putconn(conn)
+
+@app.post("/encode", dependencies=[Depends(verify_api_key)])
+@app.state.limiter.limit("10/minute")
+async def encode_text(request: Request, texts: List[str]) -> Dict[str, List[List[float]]]:
     try:
         embeddings = model.encode(texts)
         return {"embeddings": embeddings.tolist()}
@@ -137,8 +214,10 @@ async def encode_text(texts: List[str]) -> Dict[str, List[List[float]]]:
         logger.error(f"Error during text encoding: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/recommendations/{customer_id}")
-async def get_recommendations(customer_id: str):
+@app.get("/recommendations/{customer_id}", dependencies=[Depends(verify_api_key)])
+@app.state.limiter.limit("10/minute")
+async def get_recommendations(request: Request, customer_id: str, background_tasks: BackgroundTasks):  # Added request parameter
+    conn = db_pool.getconn()
     try:
         cur = conn.cursor()
         cur.execute("""
@@ -155,14 +234,8 @@ async def get_recommendations(customer_id: str):
         # Generate or use existing embedding
         if customer_data[2] is None:
             text = (customer_data[0] or "") + " " + (customer_data[1] or "")
-            embedding = generate_embedding(text)
-            logger.info(f"Generated new embedding for customer {customer_id}")
-            cur.execute("""
-                UPDATE customers 
-                SET embedding = %s::vector 
-                WHERE customer_id = %s
-            """, (embedding, customer_id))
-            conn.commit()
+            background_tasks.add_task(update_embedding, customer_id, text, conn)
+            embedding = generate_embedding(text)  # Fallback for immediate use
         else:
             embedding = customer_data[2]
             logger.info(f"Using existing embedding for customer {customer_id}")
@@ -199,12 +272,13 @@ async def get_recommendations(customer_id: str):
         logger.error(f"Unexpected error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
     finally:
-        if 'cur' in locals():
-            cur.close()
+        cur.close()
+        db_pool.putconn(conn)
 
 @app.on_event("startup")
 async def startup_event():
     """Initialize product embeddings on startup."""
+    conn = db_pool.getconn()
     try:
         cur = conn.cursor()
         cur.execute("SELECT product_id, description, embedding FROM products")
@@ -228,20 +302,20 @@ async def startup_event():
         logger.error(f"Error during startup: {str(e)}")
         conn.rollback()
     finally:
-        if 'cur' in locals():
-            cur.close()
+        cur.close()
+        db_pool.putconn(conn)
 
-@app.post("/simulate_usage")
-async def simulate_usage(request: SimulateRequest = None):
+@app.post("/simulate_usage", dependencies=[Depends(verify_api_key)])
+@app.state.limiter.limit("5/minute")
+async def simulate_usage(request: Request, sim_request: SimulateRequest = None):  # Renamed parameter to avoid shadowing
     """Simulate usage events for all provided customers or the first 2 from the database."""
+    conn = db_pool.getconn()
     try:
         cur = conn.cursor()
-        
+
         # Use request body or default to None
-        if request is None:
+        if sim_request is None:
             sim_request = SimulateRequest()
-        else:
-            sim_request = request
         
         # Get customers from input or database
         if sim_request.customers is None or not sim_request.customers:
@@ -266,28 +340,29 @@ async def simulate_usage(request: SimulateRequest = None):
 
         # Simulate events for each customer
         total_events = 0
-        while total_events < 10 * len(valid_customers):
+        while total_events < sim_request.num_events * len(valid_customers):
             for customer in valid_customers:
                 action = random.choice(DEFAULT_ACTIONS)
                 event = f"{customer}:{action}"
                 redis_client.lpush("usage_queue", event)
                 logger.info(f"Simulated event: {event}")
                 total_events += 1
-            await asyncio.sleep(sim_request.delay)   # 2 seconds delay after one cycle of customers
+            await asyncio.sleep(sim_request.delay)
         
-        return {"message": f"Simulated {sim_request.num_events} usage events for customers: {valid_customers}"}
+        return {"message": f"Simulated {total_events} usage events for customers: {valid_customers}"}
     
     except psycopg2.Error as e:
         logger.error(f"Database error during simulation: {str(e)}")
+        conn.rollback()
         raise HTTPException(status_code=500, detail="Database error")
     except Exception as e:
         logger.error(f"Error during simulation: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
     finally:
-        if 'cur' in locals():
-            cur.close()
+        cur.close()
+        db_pool.putconn(conn)
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    conn.close()
-    logger.info("Database connection closed")
+    db_pool.closeall()
+    logger.info("Database connection pool closed")

@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-const apiUrl = process.env.REACT_APP_API_BASE_URL;
+
+const apiUrl = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
+const API_KEY = process.env.REACT_APP_API_KEY || 'your_api_key_here'; // Set in .env
+
 function App() {
   const [customerIds, setCustomerIds] = useState('');
   const [recommendations, setRecommendations] = useState([]);
@@ -9,15 +12,20 @@ function App() {
   const [error, setError] = useState(null);
   const [simulating, setSimulating] = useState(false);
 
+  const api = axios.create({
+    baseURL: apiUrl,
+    headers: { 'X-API-Key': API_KEY, 'Content-Type': 'application/json' }
+  });
+
   const fetchRecommendations = async (id) => {
     setLoading(true);
     setError(null);
     try {
-      console.log('API Base URL:', apiUrl); // Updated log to show the resolved URL
-      const response = await axios.get(`${apiUrl}/recommendations/${id}`);
+      console.log('API Base URL:', apiUrl);
+      const response = await api.get(`/recommendations/${id}`);
       if (response.data) {
-        setRecommendations(response.data.recommendations || []); // Ensure recommendations is an array
-        setExplanation(response.data.explanation || ''); // Ensure explanation is a string
+        setRecommendations(response.data.recommendations || []);
+        setExplanation(response.data.explanation || '');
       } else {
         setError('No data received from the API');
       }
@@ -32,10 +40,7 @@ function App() {
     setError(null);
     try {
       const customerList = customerIds ? customerIds.split(',').map(id => id.trim()) : null;
-      await axios.post(`${apiUrl}/simulate_usage`, 
-        { customers: customerList, num_events: 10, delay: 2.0 }, 
-        { headers: { 'Content-Type': 'application/json' } }
-      );
+      await api.post('/simulate_usage', { customers: customerList, num_events: 10, delay: 2.0 });
     } catch (err) {
       setError(err.response?.data?.detail || 'Error starting simulation');
     }
