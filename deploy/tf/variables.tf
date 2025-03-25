@@ -32,7 +32,11 @@ variable "postgres_password" {
   description = "Password for PostgreSQL user"
   type        = string
   sensitive   = true
-  default     = "secure_password_123"
+  default     = "test@123$"
+  validation {
+    condition     = length(var.postgres_password) >= 12
+    error_message = "PostgreSQL password must be at least 12 characters long."
+  }
 }
 
 variable "redis_port" {
@@ -45,4 +49,74 @@ variable "postgres_port" {
   description = "Port for PostgreSQL"
   type        = number
   default     = 5432
+}
+
+variable "storage_account_tier" {
+  description = "Storage account tier (Standard or Premium)"
+  type        = string
+  default     = "Standard"
+  validation {
+    condition     = contains(["Standard", "Premium"], var.storage_account_tier)
+    error_message = "Storage account tier must be either Standard or Premium."
+  }
+}
+
+variable "postgres_storage_quota" {
+  description = "Storage quota in GB for PostgreSQL data"
+  type        = number
+  default     = 50
+  validation {
+    condition     = var.postgres_storage_quota >= 10
+    error_message = "PostgreSQL storage quota must be at least 10GB."
+  }
+}
+
+variable "redis_storage_quota" {
+  description = "Storage quota in GB for Redis data"
+  type        = number
+  default     = 10
+  validation {
+    condition     = var.redis_storage_quota >= 5
+    error_message = "Redis storage quota must be at least 5GB."
+  }
+}
+
+variable "postgres_max_replicas" {
+  description = "Maximum number of PostgreSQL replicas"
+  type        = number
+  default     = 2
+  validation {
+    condition     = var.postgres_max_replicas >= 1 && var.postgres_max_replicas <= 10
+    error_message = "PostgreSQL max replicas must be between 1 and 10."
+  }
+}
+
+variable "redis_max_replicas" {
+  description = "Maximum number of Redis replicas"
+  type        = number
+  default     = 2
+  validation {
+    condition     = var.redis_max_replicas >= 1 && var.redis_max_replicas <= 10
+    error_message = "Redis max replicas must be between 1 and 10."
+  }
+}
+
+variable "environment" {
+  description = "Environment name (e.g., dev, prod)"
+  type        = string
+  default     = "dev"
+  validation {
+    condition     = contains(["dev", "prod"], var.environment)
+    error_message = "Environment must be either dev or prod."
+  }
+}
+
+variable "tags" {
+  description = "Tags to apply to all resources"
+  type        = map(string)
+  default = {
+    Environment = "dev"
+    Project     = "bank-recommendation"
+    ManagedBy   = "terraform"
+  }
 }

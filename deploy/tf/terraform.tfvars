@@ -1,2 +1,21 @@
-resource_group_name = "my-bank-rg"
-postgres_password   = "my_secure_password"
+resource_group_name = "bank-rg"
+location = "EastUS"
+container_app_env_name = "bank-ca-env"
+postgres_app_name = "bank-postgres-app"
+redis_app_name = "bank-redis-app"
+postgres_password = "your_secure_password_here"  # Replace with a secure password
+redis_port = 6379
+postgres_port = 5432
+storage_account_tier = "Standard"
+postgres_storage_quota = 50
+redis_storage_quota = 10
+postgres_max_replicas = 2
+redis_max_replicas = 2
+environment = "dev"
+tags = {
+  Environment = "dev"
+  Project     = "bank-recommendation"
+  ManagedBy   = "terraform"
+  Owner       = "platform-team"
+  CostCenter  = "banking"
+}
