@@ -60,4 +60,44 @@ logs/
 
 # Environment variables
 .env*
-!.env.example 
+!.env.example
+
+# TensorFlow
+*.h5
+*.hdf5
+*.ckpt
+*.ckpt.*
+*.pb
+events.out.tfevents.*
+.ipynb_checkpoints/
+saved_model/
+tensorboard/
+checkpoints/
+models/
+graph.pbtxt
+*.tfrecord
+*.data-*
+*.index
+*.meta
+*lock.json
+.lock
+tflite_model/
+*_info.json
+profiler_data/
+timeline_*.json
+summary/
+variables/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+.terragrunt-cache/
+*.tfvars
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraform.lock.hcl
+terraform.tfstate.backup
+crash.log 

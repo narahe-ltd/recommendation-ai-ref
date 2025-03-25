@@ -5,6 +5,32 @@ resource "azurerm_resource_group" "rg" {
   tags     = var.tags
 }
 
+# Virtual Network
+resource "azurerm_virtual_network" "vnet" {
+  name                = "bank-vnet"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+  address_space       = ["10.0.0.0/16"]
+  tags                = var.tags
+}
+
+# Subnet for Container Apps
+resource "azurerm_subnet" "container_apps" {
+  name                 = "container-apps-subnet"
+  resource_group_name  = azurerm_resource_group.rg.name
+  virtual_network_name = azurerm_virtual_network.vnet.name
+  address_prefixes     = ["10.0.1.0/24"]
+  delegation {
+    name = "container-apps-delegation"
+    service_delegation {
+      name = "Microsoft.App/environments"
+      actions = [
+        "Microsoft.Network/virtualNetworks/subnets/join/action"
+      ]
+    }
+  }
+}
+
 # Log Analytics Workspace (for monitoring)
 resource "azurerm_log_analytics_workspace" "law" {
   name                = "bank-log-analytics"
@@ -21,6 +47,7 @@ resource "azurerm_container_app_environment" "cae" {
   location                   = azurerm_resource_group.rg.location
   resource_group_name        = azurerm_resource_group.rg.name
   log_analytics_workspace_id = azurerm_log_analytics_workspace.law.id
+  infrastructure_subnet_id   = azurerm_subnet.container_apps.id
   tags                       = var.tags
 }
 
@@ -36,10 +63,39 @@ resource "azurerm_storage_account" "storage" {
 }
 
 # Enable blob encryption for storage account
-resource "azurerm_storage_account_sas" "storage_sas" {
+data "azurerm_storage_account_sas" "storage_sas" {
   connection_string = azurerm_storage_account.storage.primary_connection_string
   https_only       = true
   signed_version   = "2020-08-04"
+  
+  start  = "2023-01-01"
+  expiry = "2024-12-31"
+  
+  services {
+    blob  = true
+    queue = false
+    table = false
+    file  = true
+  }
+  
+  resource_types {
+    service   = true
+    container = true
+    object    = true
+  }
+  
+  permissions {
+    read    = true
+    write   = true
+    delete  = false
+    list    = true
+    add     = true
+    create  = true
+    update  = true
+    process = false
+    tag     = false
+    filter  = false
+  }
 }
 
 resource "random_string" "suffix" {
@@ -76,7 +132,7 @@ resource "azurerm_network_security_group" "postgres_nsg" {
     protocol                   = "Tcp"
     source_port_range         = "*"
     destination_port_range    = var.postgres_port
-    source_address_prefix     = "*"
+    source_address_prefix     = "*"  # Allow from anywhere (you can restrict this to your IP)
     destination_address_prefix = "*"
   }
 }
@@ -96,7 +152,7 @@ resource "azurerm_network_security_group" "redis_nsg" {
     protocol                   = "Tcp"
     source_port_range         = "*"
     destination_port_range    = var.redis_port
-    source_address_prefix     = "*"
+    source_address_prefix     = "*"  # Allow from anywhere (you can restrict this to your IP)
     destination_address_prefix = "*"
   }
 }
@@ -155,7 +211,9 @@ resource "azurerm_container_app" "postgres_app" {
     transport        = "tcp"
     traffic_weight {
       percentage = 100
+      latest_revision = true
     }
+    allow_insecure_connections = true  # Require HTTPS TODO: change to false
   }
 }
 
@@ -201,7 +259,9 @@ resource "azurerm_container_app" "redis_app" {
     transport        = "tcp"
     traffic_weight {
       percentage = 100
+      latest_revision = true
     }
+    allow_insecure_connections = true  # Require HTTPS TODO: change to false
   }
 }
 
@@ -230,4 +290,30 @@ resource "azurerm_monitor_diagnostic_setting" "storage_diagnostics" {
       days    = 30
     }
   }
+}
+
+# Backup Configuration for PostgreSQL
+resource "azurerm_backup_policy_vm" "postgres_backup" {
+  name                = "postgres-backup-policy"
+  resource_group_name = azurerm_resource_group.rg.name
+  recovery_vault_name = azurerm_recovery_services_vault.vault.name
+
+  backup {
+    frequency = "Daily"
+    time      = "23:00"
+  }
+
+  retention_daily {
+    count = 7
+  }
+}
+
+# Recovery Services Vault
+resource "azurerm_recovery_services_vault" "vault" {
+  name                = "bank-recovery-vault"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+  sku                 = "Standard"
+  soft_delete_enabled = true
+  tags                = var.tags
 }
