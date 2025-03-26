@@ -7,7 +7,7 @@ services:
     image: pgvector/pgvector:0.8.0-pg17  # Use a pre-built image with pgvector
     environment:
       POSTGRES_USER: bank_user
-      POSTGRES_PASSWORD: secure_password_123
+      POSTGRES_PASSWORD: your_secure_password_here
       POSTGRES_DB: bank_recommendations
     volumes:
       - postgres_data:/var/lib/postgresql/data

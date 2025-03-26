@@ -211,6 +211,10 @@ resource "azurerm_container_app" "postgres_app" {
         name  = "POSTGRES_DB"
         value = "bank_recommendations"
       }
+      env {
+        name  = "PGDATA"
+        value = "/var/lib/postgresql/data/pgdata"
+      }
 
       readiness_probe {
         transport = "TCP"
@@ -220,12 +224,17 @@ resource "azurerm_container_app" "postgres_app" {
         transport = "TCP"
         port      = var.postgres_port
       }
+      
+      volume_mounts {
+        name = "postgres-data"
+        path = "/var/lib/postgresql/data"
+      }
     }
 
     volume {
       name         = "postgres-data"
       storage_type = "AzureFile"
-      storage_name = azurerm_storage_share.postgres_share.name
+      storage_name = "postgres-data"
     }
 
     min_replicas = 0  # Scale to zero when idle
@@ -257,7 +266,19 @@ resource "azurerm_container_app" "redis_app" {
       image  = "redis:7.2"
       cpu    = 0.25
       memory = "0.5Gi"
-      command = ["redis-server", "--appendonly", "yes", "--requirepass", var.postgres_password]  # Enable AOF persistence and password protection
+      # Enhanced Redis configuration for better persistence
+      command = [
+        "redis-server", 
+        "--appendonly", "yes",
+        "--appendfsync", "everysec",
+        "--auto-aof-rewrite-percentage", "100",
+        "--auto-aof-rewrite-min-size", "64mb",
+        "--save", "900", "1",
+        "--save", "300", "10",
+        "--save", "60", "10000",
+        "--dir", "/data",
+        "--requirepass", var.postgres_password
+      ]
 
       readiness_probe {
         transport = "TCP"
@@ -267,12 +288,17 @@ resource "azurerm_container_app" "redis_app" {
         transport = "TCP"
         port      = 6379
       }
+      
+      volume_mounts {
+        name = "redis-data"
+        path = "/data"
+      }
     }
 
     volume {
       name         = "redis-data"
       storage_type = "AzureFile"
-      storage_name = azurerm_storage_share.redis_share.name
+      storage_name = "redis-data"
     }
 
     min_replicas = 0  # Scale to zero when idle
