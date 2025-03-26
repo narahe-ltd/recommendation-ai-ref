@@ -59,7 +59,7 @@ resource "azurerm_container_app_environment" "cae" {
   tags                       = var.tags
 }
 
-# Register storage with the Container App Environment
+# Container App Environment Storage
 resource "azurerm_container_app_environment_storage" "postgres_storage" {
   name                         = "postgres-data"
   container_app_environment_id = azurerm_container_app_environment.cae.id
@@ -80,7 +80,7 @@ resource "azurerm_container_app_environment_storage" "redis_storage" {
 
 # Storage Account for persistence
 resource "azurerm_storage_account" "storage" {
-  name                     = "bankstorage${random_string.suffix.result}"
+  name                     = "bankstorage${var.resource_group_name}"
   resource_group_name      = azurerm_resource_group.rg.name
   location                 = azurerm_resource_group.rg.location
   account_tier             = var.storage_account_tier
@@ -129,6 +129,9 @@ resource "random_string" "suffix" {
   length  = 8
   special = false
   upper   = false
+  keepers = {
+    resource_group_name = var.resource_group_name
+  }
 }
 
 # Storage Shares for Postgres and Redis
@@ -191,6 +194,10 @@ resource "azurerm_container_app" "postgres_app" {
   container_app_environment_id = azurerm_container_app_environment.cae.id
   revision_mode                = "Single"
   tags                         = var.tags
+
+  depends_on = [
+    azurerm_container_app_environment_storage.postgres_storage
+  ]
 
   template {
     container {
@@ -259,6 +266,10 @@ resource "azurerm_container_app" "redis_app" {
   container_app_environment_id = azurerm_container_app_environment.cae.id
   revision_mode                = "Single"
   tags                         = var.tags
+
+  depends_on = [
+    azurerm_container_app_environment_storage.redis_storage
+  ]
 
   template {
     container {

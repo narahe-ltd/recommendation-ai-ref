@@ -20,8 +20,7 @@ echo "Planning deployment..."
 terraform plan -out=tfplan
 
 echo "Review the plan above."
-read -p "Continue with deployment? (y/n): " confirm
-
+read -t 5 -p "Continue with deployment? (y/n): " confirm || confirm="y"
 if [[ $confirm != "y" && $confirm != "Y" ]]; then
     echo "Deployment cancelled."
     exit 0

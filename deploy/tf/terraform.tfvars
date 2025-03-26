@@ -1,4 +1,4 @@
-resource_group_name = "bank-rg"
+resource_group_name = "bankrg"
 location = "EastUS"
 container_app_env_name = "bank-ca-env"
 postgres_app_name = "bank-postgres-app"
