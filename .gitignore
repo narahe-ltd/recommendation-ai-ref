@@ -101,3 +101,4 @@ override.tf.json
 .terraform.lock.hcl
 terraform.tfstate.backup
 crash.log 
+tfplan

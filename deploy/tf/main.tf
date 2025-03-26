@@ -14,12 +14,20 @@ resource "azurerm_virtual_network" "vnet" {
   tags                = var.tags
 }
 
-# Subnet for Container Apps
+# Subnet for Container Apps Infrastructure (no delegation)
+resource "azurerm_subnet" "container_apps_infra" {
+  name                 = "container-apps-infra-subnet"
+  resource_group_name  = azurerm_resource_group.rg.name
+  virtual_network_name = azurerm_virtual_network.vnet.name
+  address_prefixes     = ["10.0.0.0/23"]  # /23 subnet (512 IPs)
+}
+
+# Subnet for Container Apps (with delegation)
 resource "azurerm_subnet" "container_apps" {
   name                 = "container-apps-subnet"
   resource_group_name  = azurerm_resource_group.rg.name
   virtual_network_name = azurerm_virtual_network.vnet.name
-  address_prefixes     = ["10.0.1.0/24"]
+  address_prefixes     = ["10.0.2.0/24"]  # /24 subnet (256 IPs)
   delegation {
     name = "container-apps-delegation"
     service_delegation {
@@ -37,7 +45,7 @@ resource "azurerm_log_analytics_workspace" "law" {
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
   sku                 = "PerGB2018"
-  retention_in_days   = 30
+  retention_in_days   = 30  # Minimum required by Azure is 30 days for new workspaces
   tags                = var.tags
 }
 
@@ -47,8 +55,27 @@ resource "azurerm_container_app_environment" "cae" {
   location                   = azurerm_resource_group.rg.location
   resource_group_name        = azurerm_resource_group.rg.name
   log_analytics_workspace_id = azurerm_log_analytics_workspace.law.id
-  infrastructure_subnet_id   = azurerm_subnet.container_apps.id
+  infrastructure_subnet_id   = azurerm_subnet.container_apps_infra.id  # Use the non-delegated subnet
   tags                       = var.tags
+}
+
+# Register storage with the Container App Environment
+resource "azurerm_container_app_environment_storage" "postgres_storage" {
+  name                         = "postgres-data"
+  container_app_environment_id = azurerm_container_app_environment.cae.id
+  account_name                 = azurerm_storage_account.storage.name
+  share_name                   = azurerm_storage_share.postgres_share.name
+  access_key                   = azurerm_storage_account.storage.primary_access_key
+  access_mode                  = "ReadWrite"
+}
+
+resource "azurerm_container_app_environment_storage" "redis_storage" {
+  name                         = "redis-data"
+  container_app_environment_id = azurerm_container_app_environment.cae.id
+  account_name                 = azurerm_storage_account.storage.name
+  share_name                   = azurerm_storage_share.redis_share.name
+  access_key                   = azurerm_storage_account.storage.primary_access_key
+  access_mode                  = "ReadWrite"
 }
 
 # Storage Account for persistence
@@ -108,13 +135,13 @@ resource "random_string" "suffix" {
 resource "azurerm_storage_share" "postgres_share" {
   name                 = "postgres-data"
   storage_account_name = azurerm_storage_account.storage.name
-  quota                = var.postgres_storage_quota
+  quota                = 10
 }
 
 resource "azurerm_storage_share" "redis_share" {
   name                 = "redis-data"
   storage_account_name = azurerm_storage_account.storage.name
-  quota                = var.redis_storage_quota
+  quota                = 5
 }
 
 # Network Security Group for PostgreSQL
@@ -213,7 +240,6 @@ resource "azurerm_container_app" "postgres_app" {
       percentage = 100
       latest_revision = true
     }
-    allow_insecure_connections = true  # Require HTTPS TODO: change to false
   }
 }
 
@@ -261,7 +287,6 @@ resource "azurerm_container_app" "redis_app" {
       percentage = 100
       latest_revision = true
     }
-    allow_insecure_connections = true  # Require HTTPS TODO: change to false
   }
 }
 
@@ -274,25 +299,15 @@ resource "azurerm_monitor_diagnostic_setting" "storage_diagnostics" {
   metric {
     category = "Transaction"
     enabled  = true
-
-    retention_policy {
-      enabled = true
-      days    = 30
-    }
   }
 
   metric {
     category = "Capacity"
     enabled  = true
-
-    retention_policy {
-      enabled = true
-      days    = 30
-    }
   }
 }
 
-# Backup Configuration for PostgreSQL
+# Backup Configuration for PostgreSQL - Simplified retention
 resource "azurerm_backup_policy_vm" "postgres_backup" {
   name                = "postgres-backup-policy"
   resource_group_name = azurerm_resource_group.rg.name
@@ -304,7 +319,7 @@ resource "azurerm_backup_policy_vm" "postgres_backup" {
   }
 
   retention_daily {
-    count = 7
+    count = 7  # Minimum required by Azure is 7 days
   }
 }
 

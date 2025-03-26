@@ -64,20 +64,20 @@ variable "storage_account_tier" {
 variable "postgres_storage_quota" {
   description = "Storage quota in GB for PostgreSQL data"
   type        = number
-  default     = 50
+  default     = 10
   validation {
-    condition     = var.postgres_storage_quota >= 10
-    error_message = "PostgreSQL storage quota must be at least 10GB."
+    condition     = var.postgres_storage_quota >= 5
+    error_message = "PostgreSQL storage quota must be at least 5GB."
   }
 }
 
 variable "redis_storage_quota" {
   description = "Storage quota in GB for Redis data"
   type        = number
-  default     = 10
+  default     = 5
   validation {
-    condition     = var.redis_storage_quota >= 5
-    error_message = "Redis storage quota must be at least 5GB."
+    condition     = var.redis_storage_quota >= 1
+    error_message = "Redis storage quota must be at least 1GB."
   }
 }
 
@@ -119,4 +119,10 @@ variable "tags" {
     Project     = "bank-recommendation"
     ManagedBy   = "terraform"
   }
+}
+
+variable "auto_teardown_enabled" {
+  description = "Whether to enable auto-teardown for cost savings during non-business hours"
+  type        = bool
+  default     = false
 }
