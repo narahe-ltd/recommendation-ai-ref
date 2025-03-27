@@ -1,0 +1,93 @@
+  terraform apply -target=azurerm_storage_account.storage -target=azurerm_storage_share.postgres_share
+
+  az storage file upload-batch \
+  --account-name "bankstorage${var.resource_group_name}" \
+  --account-key "$(az storage account keys list --resource-group ${var.resource_group_name} --account-name "bankstorage${var.resource_group_name}" --query '[0].value' -o tsv)" \
+  --source ./pgdata \
+  --destination postgres-data
+
+  az storage file upload-batch \
+  --account-name "bankstoragebankrg" \
+  --account-key "$(az storage account keys list --resource-group bankrg --account-name "bankstoragebankrg" --query '[0].value' -o tsv)" \
+  --source ./pgdata2 \
+  --destination postgres-data
+
+
+  az storage account keys list --resource-group bankrg --account-name "bankstoragebankrg" --query '[0].value' -o tsv
+
+  az storage file upload \
+  --account-name "bankstorage${var.resource_group_name}" \
+  --account-key "$(az storage account keys list --resource-group ${var.resource_group_name} --account-name "bankstorage${var.resource_group_name}" --query '[0].value' -o tsv)" \
+  --share-name postgres-data \
+  --source ./pgdata.zip \
+  --path pgdata.zip
+  
+  az storage file upload \
+  --account-name "bankstoragebankrg" \
+  --account-key "$(az storage account keys list --resource-group bankrg --account-name "bankstoragebankrg" --query '[0].value' -o tsv)" \
+  --share-name postgres-data \
+  --source ./pgdata.zip \
+  --path pgdata.zip
+
+  az containerapp logs show --name ${var.postgres_app_name} --resource-group ${var.resource_group_name}
+
+  az containerapp logs show --name bank-postgres-app --resource-group bankrg
+
+
+az storage file list \
+  --account-name "bankstoragebankrg" \
+  --account-key "$(az storage account keys list --resource-group bankrg --account-name "bankstoragebankrg" --query '[0].value' -o tsv)" \
+  --share-name postgres-data
+
+
+
+az storage file download \
+  --account-name "bankstoragebankrg" \
+  --account-key "$(az storage account keys list --resource-group bankrg --account-name "bankstoragebankrg" --query '[0].value' -o tsv)" \
+  --share-name postgres-data \
+  --path pgdata.zip \
+  --dest ./pgdata.zip
+unzip ./pgdata.zip -d ./pgdata
+az storage file upload-batch \
+  --account-name "bankstoragebankrg" \
+  --account-key "$(az storage account keys list --resource-group bankrg --account-name "bankstoragebankrg" --query '[0].value' -o tsv)" \
+  --source ./pgdata \
+  --destination postgres-data
+
+
+  mount_smbfs -o nobrowse //AZURE\<storage-account-name>:<storage-account-key>@<storage-account-name>.file.core.windows.net/<file-share-name> ~/azurefileshare
+  mount_smbfs -o nobrowse //AZURE\bankstoragebankrg:secret@bankstoragebankrg.file.core.windows.net/postgres-data ~/azurefileshare
+  open smb://bankstoragebankrg:secret@bankstoragebankrg.file.core.windows.net/postgres-data
+
+
+
+--account-key "$(az storage account keys list --resource-group bankrg --account-name "bankstoragebankrg" --query '[0].value' -o tsv)" 
+
+
+az storage account keys list --resource-group bankrg --account-name "bankstoragebankrg" --query '[0].value' -o tsv
+
+
+storage_account_name="<your-storage-account-name>"
+az storage fs list \
+  --account-name bankstoragebankrg \
+  --account-key "$(az storage account keys list --resource-group bankrg --account-name "bankstoragebankrg" --query '[0].value' -o tsv)"  \
+  --query "[].name" \
+  --output tsv
+
+
+share_name="postgres-data"
+directory_name="pgdata/"
+storage_account_name="bankstoragebankrg"
+account_key=$(az storage account keys list --resource-group bankrg --account-name "bankstoragebankrg" --query '[0].value' -o tsv)
+az storage directory delete \
+  --share-name "$share_name" \
+  --path "$directory_name" \
+  --account-name "$storage_account_name" \
+  --yes \
+  --account-key "$(az storage account keys list --resource-group bankrg --account-name "bankstoragebankrg" --query '[0].value' -o tsv)"  \
+
+az storage directory delete \
+  --share-name "$share_name" \
+  --name "$directory_name" \
+  --account-name "$storage_account_name" \
+  --account-key "$(az storage account keys list --resource-group bankrg --account-name "bankstoragebankrg" --query '[0].value' -o tsv)"  

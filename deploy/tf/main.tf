@@ -59,6 +59,30 @@ resource "azurerm_container_app_environment" "cae" {
   tags                       = var.tags
 }
 
+# Storage Account for persistence
+resource "azurerm_storage_account" "storage" {
+  name                     = "bankstorage${var.resource_group_name}"
+  resource_group_name      = azurerm_resource_group.rg.name
+  location                 = azurerm_resource_group.rg.location
+  account_tier             = var.storage_account_tier
+  account_replication_type = "LRS"
+  min_tls_version          = "TLS1_2"
+  tags                     = var.tags
+}
+
+# Storage Shares for Postgres and Redis
+resource "azurerm_storage_share" "postgres_share" {
+  name                 = "postgres-data"
+  storage_account_name = azurerm_storage_account.storage.name
+  quota                = 10
+}
+
+resource "azurerm_storage_share" "redis_share" {
+  name                 = "redis-data"
+  storage_account_name = azurerm_storage_account.storage.name
+  quota                = 5
+}
+
 # Container App Environment Storage
 resource "azurerm_container_app_environment_storage" "postgres_storage" {
   name                         = "postgres-data"
@@ -78,22 +102,11 @@ resource "azurerm_container_app_environment_storage" "redis_storage" {
   access_mode                  = "ReadWrite"
 }
 
-# Storage Account for persistence
-resource "azurerm_storage_account" "storage" {
-  name                     = "bankstorage${var.resource_group_name}"
-  resource_group_name      = azurerm_resource_group.rg.name
-  location                 = azurerm_resource_group.rg.location
-  account_tier             = var.storage_account_tier
-  account_replication_type = "LRS"
-  min_tls_version         = "TLS1_2"
-  tags                     = var.tags
-}
-
 # Enable blob encryption for storage account
 data "azurerm_storage_account_sas" "storage_sas" {
   connection_string = azurerm_storage_account.storage.primary_connection_string
-  https_only       = true
-  signed_version   = "2020-08-04"
+  https_only        = true
+  signed_version    = "2020-08-04"
   
   start  = "2023-01-01"
   expiry = "2024-12-31"
@@ -134,19 +147,6 @@ resource "random_string" "suffix" {
   }
 }
 
-# Storage Shares for Postgres and Redis
-resource "azurerm_storage_share" "postgres_share" {
-  name                 = "postgres-data"
-  storage_account_name = azurerm_storage_account.storage.name
-  quota                = 10
-}
-
-resource "azurerm_storage_share" "redis_share" {
-  name                 = "redis-data"
-  storage_account_name = azurerm_storage_account.storage.name
-  quota                = 5
-}
-
 # Network Security Group for PostgreSQL
 resource "azurerm_network_security_group" "postgres_nsg" {
   name                = "postgres-nsg"
@@ -160,9 +160,9 @@ resource "azurerm_network_security_group" "postgres_nsg" {
     direction                  = "Inbound"
     access                     = "Allow"
     protocol                   = "Tcp"
-    source_port_range         = "*"
-    destination_port_range    = var.postgres_port
-    source_address_prefix     = "*"  # Allow from anywhere (you can restrict this to your IP)
+    source_port_range          = "*"
+    destination_port_range     = var.postgres_port
+    source_address_prefix      = "*"  # Allow from anywhere (restrict as needed)
     destination_address_prefix = "*"
   }
 }
@@ -180,9 +180,9 @@ resource "azurerm_network_security_group" "redis_nsg" {
     direction                  = "Inbound"
     access                     = "Allow"
     protocol                   = "Tcp"
-    source_port_range         = "*"
-    destination_port_range    = var.redis_port
-    source_address_prefix     = "*"  # Allow from anywhere (you can restrict this to your IP)
+    source_port_range          = "*"
+    destination_port_range     = var.redis_port
+    source_address_prefix      = "*"  # Allow from anywhere (restrict as needed)
     destination_address_prefix = "*"
   }
 }
@@ -205,6 +205,27 @@ resource "azurerm_container_app" "postgres_app" {
       image  = "pgvector/pgvector:0.8.0-pg17"
       cpu    = 0.5
       memory = "1Gi"
+
+      command = [
+        "bash", "-c", <<EOF
+        if [ -d /mnt/postgres/pgdata ] && [ "$(ls -A /mnt/postgres/pgdata)" ]; then 
+            echo 'Restoring data from share...'; 
+            cp -r /mnt/postgres/pgdata /var/lib/postgresql/data/; 
+        else 
+            echo 'Initializing fresh database...'; 
+            mkdir -p /var/lib/postgresql/data/pgdata; 
+            chown postgres:postgres /var/lib/postgresql/data/pgdata; 
+            su postgres -c 'initdb -D /var/lib/postgresql/data/pgdata --username="bank_user" --pwfile=<(echo "${var.postgres_password}")';   
+        fi; 
+        su postgres -c 'postgres -D /var/lib/postgresql/data/pgdata' & 
+        while true; do 
+            sleep 60; 
+            echo 'Syncing data to share...'; 
+            mkdir -p /mnt/postgres/pgdata; 
+            cp -r /var/lib/postgresql/data/pgdata/* /mnt/postgres/pgdata/ || echo 'Sync failed'; 
+        done
+        EOF
+      ]
 
       env {
         name  = "POSTGRES_USER"
@@ -234,7 +255,7 @@ resource "azurerm_container_app" "postgres_app" {
       
       volume_mounts {
         name = "postgres-data"
-        path = "/var/lib/postgresql/data"
+        path = "/mnt/postgres"
       }
     }
 
@@ -244,7 +265,7 @@ resource "azurerm_container_app" "postgres_app" {
       storage_name = "postgres-data"
     }
 
-    min_replicas = 0  # Scale to zero when idle
+    min_replicas = 0
     max_replicas = var.postgres_max_replicas
   }
 
@@ -277,9 +298,8 @@ resource "azurerm_container_app" "redis_app" {
       image  = "redis:7.2"
       cpu    = 0.25
       memory = "0.5Gi"
-      # Enhanced Redis configuration for better persistence
       command = [
-        "redis-server", 
+        "redis-server",
         "--appendonly", "yes",
         "--appendfsync", "everysec",
         "--auto-aof-rewrite-percentage", "100",
@@ -312,7 +332,7 @@ resource "azurerm_container_app" "redis_app" {
       storage_name = "redis-data"
     }
 
-    min_replicas = 0  # Scale to zero when idle
+    min_replicas = 0
     max_replicas = var.redis_max_replicas
   }
 
@@ -330,7 +350,7 @@ resource "azurerm_container_app" "redis_app" {
 # Diagnostic Settings for Storage Account
 resource "azurerm_monitor_diagnostic_setting" "storage_diagnostics" {
   name                       = "storage-diagnostics"
-  target_resource_id        = azurerm_storage_account.storage.id
+  target_resource_id         = azurerm_storage_account.storage.id
   log_analytics_workspace_id = azurerm_log_analytics_workspace.law.id
 
   metric {

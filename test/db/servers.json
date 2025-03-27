@@ -3,10 +3,10 @@
       "1": {
         "Name": "local db",
         "Group": "Servers",
-        "Host": "postgres",
-        "Port": 5432,
+        "Host": "pg-bank-data-raheemuddin786.h.aivencloud.com",
+        "Port": 21094,
         "MaintenanceDB": "bank_recommendations",
-        "Username": "bank_user",
+        "Username": "avnadmin",
         "SSLMode": "prefer"
         }
     }

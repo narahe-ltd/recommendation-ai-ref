@@ -8,6 +8,9 @@ set -e
 # Determine which component to deploy (default to 'app')
 COMPONENT="${1:-app}"
 
+export SubscriptionId=$(az account show --query id -o tsv)
+export ARM_SUBSCRIPTION_ID=$SubscriptionId
+
 # Validate the component parameter
 if [[ "$COMPONENT" != "backend" && "$COMPONENT" != "app" ]]; then
     echo "Error: Invalid parameter. Use 'backend' or 'app'."
@@ -30,7 +33,7 @@ cd "$TARGET_DIR"
 # Backend configuration for app deployment (only used if deploying app)
 if [[ "$COMPONENT" == "app" ]]; then
     BACKEND_RG=${BACKEND_RG:-"terraform-backend-rg"}
-    BACKEND_STORAGE=${BACKEND_STORAGE:-"tfbackend<randomsuffix>"}  # Replace <randomsuffix> with actual value
+    BACKEND_STORAGE=${BACKEND_STORAGE:-"tfbackend07pj1xf2"}  # Replace <randomsuffix> with actual value
     BACKEND_CONTAINER=${BACKEND_CONTAINER:-"tfstate"}
     BACKEND_KEY=${BACKEND_KEY:-"bank-recommendation-system.tfstate"}
 

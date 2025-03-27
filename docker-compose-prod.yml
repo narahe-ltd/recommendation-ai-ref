@@ -4,9 +4,9 @@ services:
   postgres-init:
     image: postgres:latest
     environment:
-      PGPASSWORD: your_secure_password_here
+      PGPASSWORD: secret
     command: >
-      psql -h bank-postgres-app--ia3tey2.happybeach-5f7eb2e6.eastus.azurecontainerapps.io -p 5432 -U bank_user -d bank_recommendations -f /init.sql
+      psql -h pg-bank-data-raheemuddin786.h.aivencloud.com -p 21094 -U avnadmin -d bank_recommendations -f /init.sql
     volumes:
       - ./init.sql:/init.sql
     networks:
@@ -65,7 +65,7 @@ services:
     ports:
       - 5050:80
     environment:
-      DATABASE_URL: postgresql://bank_user:your_secure_password_here@bank-postgres-app--ia3tey2.happybeach-5f7eb2e6.eastus.azurecontainerapps.io:5432/bank_recommendations
+      DATABASE_URL: postgresql://avnadmin:secret@pg-bank-data-raheemuddin786.h.aivencloud.com:21094/bank_recommendations
       PGADMIN_DEFAULT_EMAIL: user@domain.com
       PGADMIN_DEFAULT_PASSWORD: password
     volumes:

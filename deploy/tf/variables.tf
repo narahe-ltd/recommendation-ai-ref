@@ -32,7 +32,7 @@ variable "postgres_password" {
   description = "Password for PostgreSQL user"
   type        = string
   sensitive   = true
-  default     = "test@123$"
+  default     = "your_secure_password_here"
   validation {
     condition     = length(var.postgres_password) >= 12
     error_message = "PostgreSQL password must be at least 12 characters long."
