@@ -1,0 +1,27 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "resources": [
+      {
+        "name": "my-postgres-app",
+        "type": "Microsoft.App/containerApps",
+        "apiVersion": "2023-05-01",
+        "location": "eastus",
+        "properties": {
+            "managedEnvironmentId": "/subscriptions/dfe4f19e-0de2-45f1-b1e7-f1aa89766598/resourceGroups/myResourceGroup/providers/Microsoft.App/managedEnvironments/myContainerAppEnv",
+            "template": {
+            "containers": [
+              {
+                "name": "postgres",
+                "image": "postgres:latest",
+                "resources": {
+                  "cpu": 0.5,
+                  "memory": "1Gi"
+                }
+              }
+            ]
+          }
+        }
+      }
+    ]
+  }

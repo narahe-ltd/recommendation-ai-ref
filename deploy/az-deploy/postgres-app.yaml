@@ -1,0 +1,42 @@
+name: my-postgres-app
+type: Microsoft.App/containerApps
+location: eastus
+properties:
+  managedEnvironmentId: /subscriptions/dfe4f19e-0de2-45f1-b1e7-f1aa89766598/resourceGroups/myResourceGroup/providers/Microsoft.App/managedEnvironments/myContainerAppEnv
+  configuration:
+    secrets:
+    - name: postgres-password
+      value: mysecretpassword
+    ingress:
+      external: false
+      targetPort: 5432
+      transport: "tcp"
+  template:
+    containers:
+    - name: postgres
+      image: postgres:latest
+      resources:
+        cpu: 0.5
+        memory: "1Gi"
+      env:
+      - name: POSTGRES_USER
+        value: myuser
+      - name: POSTGRES_PASSWORD
+        secretRef: postgres-password
+      - name: POSTGRES_DB
+        value: mydb
+      - name: PGDATA
+        value: /var/lib/postgresql/data/pgdata
+      volumeMounts:
+      - volumeName: postgres-storage
+        mountPath: /var/lib/postgresql/data
+    volumes:
+    - name: postgres-storage
+      storageType: AzureFile
+      storageName: myfileshare
+      accountName: sdrhmstoragaccount01
+      accessMode: ReadWrite
+      accountKey: "secret"
+    scale:
+      minReplicas: 1
+      maxReplicas: 1

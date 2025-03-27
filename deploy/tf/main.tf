@@ -61,7 +61,8 @@ resource "azurerm_container_app_environment" "cae" {
 
 # Storage Account for persistence
 resource "azurerm_storage_account" "storage" {
-  name                     = "bankstorage${var.resource_group_name}"
+  # name                     = "bankstorage${var.resource_group_name}"
+  name                     = "bankstorage${random_string.suffix.result}"
   resource_group_name      = azurerm_resource_group.rg.name
   location                 = azurerm_resource_group.rg.location
   account_tier             = var.storage_account_tier
@@ -195,9 +196,9 @@ resource "azurerm_container_app" "postgres_app" {
   revision_mode                = "Single"
   tags                         = var.tags
 
-  depends_on = [
-    azurerm_container_app_environment_storage.postgres_storage
-  ]
+  # depends_on = [
+  #   azurerm_container_app_environment_storage.postgres_storage
+  # ]
 
   template {
     container {
@@ -205,27 +206,33 @@ resource "azurerm_container_app" "postgres_app" {
       image  = "pgvector/pgvector:0.8.0-pg17"
       cpu    = 0.5
       memory = "1Gi"
+      # command = [
+      #   # "bash", "-c", "echo 'Hello';whoami;users;ls -alh /mnt/postgres/pgdata;postgres"
+      #   # "bash", "-c", "ls -alh;mkdir -p /mnt/postgres/pgdata;chown -R postgres:postgres /mnt/postgres/pgdata;chown -R 999:999 /mnt/postgres/pgdata && ls -alh /mnt/postgres/pgdata && docker-entrypoint.sh postgres"
+      # ]
+      # command = ["/bin/sh", "-c", "ls -alh;chown -R 999:999 /mnt/postgres/pgdata && ls -alh /mnt/postgres/pgdata && docker-entrypoint.sh postgres"]
+      # command = ["/bin/sh", "-c", "ls -alh /mnt/postgres && docker-entrypoint.sh postgres"]
 
-      command = [
-        "bash", "-c", <<EOF
-        if [ -d /mnt/postgres/pgdata ] && [ "$(ls -A /mnt/postgres/pgdata)" ]; then 
-            echo 'Restoring data from share...'; 
-            cp -r /mnt/postgres/pgdata /var/lib/postgresql/data/; 
-        else 
-            echo 'Initializing fresh database...'; 
-            mkdir -p /var/lib/postgresql/data/pgdata; 
-            chown postgres:postgres /var/lib/postgresql/data/pgdata; 
-            su postgres -c 'initdb -D /var/lib/postgresql/data/pgdata --username="bank_user" --pwfile=<(echo "${var.postgres_password}")';   
-        fi; 
-        su postgres -c 'postgres -D /var/lib/postgresql/data/pgdata' & 
-        while true; do 
-            sleep 60; 
-            echo 'Syncing data to share...'; 
-            mkdir -p /mnt/postgres/pgdata; 
-            cp -r /var/lib/postgresql/data/pgdata/* /mnt/postgres/pgdata/ || echo 'Sync failed'; 
-        done
-        EOF
-      ]
+      # command = [
+      #   "bash", "-c", <<EOF
+      #   if [ -d /mnt/postgres/pgdata ] && [ "$(ls -A /mnt/postgres/pgdata)" ]; then 
+      #       echo 'Restoring data from share...'; 
+      #       cp -r /mnt/postgres/pgdata /var/lib/postgresql/data/; 
+      #   else 
+      #       echo 'Initializing fresh database...'; 
+      #       mkdir -p /var/lib/postgresql/data/pgdata; 
+      #       chown postgres:postgres /var/lib/postgresql/data/pgdata; 
+      #       su postgres -c 'initdb -D /var/lib/postgresql/data/pgdata --username="bank_user" --pwfile=<(echo "${var.postgres_password}")';   
+      #   fi; 
+      #   su postgres -c 'postgres -D /var/lib/postgresql/data/pgdata' & 
+      #   while true; do 
+      #       sleep 60; 
+      #       echo 'Syncing data to share...'; 
+      #       mkdir -p /mnt/postgres/pgdata; 
+      #       cp -r /var/lib/postgresql/data/pgdata/* /mnt/postgres/pgdata/ || echo 'Sync failed'; 
+      #   done
+      #   EOF
+      # ]
 
       env {
         name  = "POSTGRES_USER"
@@ -241,7 +248,7 @@ resource "azurerm_container_app" "postgres_app" {
       }
       env {
         name  = "PGDATA"
-        value = "/var/lib/postgresql/data/pgdata"
+        value = "/mnt/postgres/pgdata"
       }
 
       readiness_probe {
@@ -288,9 +295,9 @@ resource "azurerm_container_app" "redis_app" {
   revision_mode                = "Single"
   tags                         = var.tags
 
-  depends_on = [
-    azurerm_container_app_environment_storage.redis_storage
-  ]
+  # depends_on = [
+  #   azurerm_container_app_environment_storage.redis_storage
+  # ]
 
   template {
     container {

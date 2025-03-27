@@ -13,6 +13,11 @@ if [[ $confirm != "y" && $confirm != "Y" ]]; then
     exit 0
 fi
 
+
+export SubscriptionId=$(az account show --query id -o tsv)
+export ARM_SUBSCRIPTION_ID=$SubscriptionId
+
+
 # Navigate to the terraform directory
 cd "$(dirname "$0")/tf"
 

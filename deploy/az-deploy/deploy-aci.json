@@ -1,0 +1,101 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+      "containerGroupName": {
+        "type": "string",
+        "defaultValue": "myContainerGroup",
+        "metadata": {
+          "description": "Name of the container group."
+        }
+      },
+      "containerName": {
+        "type": "string",
+        "defaultValue": "mycontainer",
+        "metadata": {
+          "description": "Name of the container."
+        }
+      },
+      "image": {
+        "type": "string",
+        "defaultValue": "mcr.microsoft.com/azuredocs/aci-helloworld:latest",
+        "metadata": {
+          "description": "Container image to deploy."
+        }
+      },
+      "storageAccountName": {
+        "type": "string",
+        "metadata": {
+          "description": "Name of the Azure Storage account hosting the file share."
+        }
+      },
+      "storageAccountKey": {
+        "type": "securestring",
+        "metadata": {
+          "description": "Access key for the Azure Storage account."
+        }
+      },
+      "fileShareName": {
+        "type": "string",
+        "defaultValue": "myfileshare",
+        "metadata": {
+          "description": "Name of the Azure Files share to mount."
+        }
+      },
+      "mountPath": {
+        "type": "string",
+        "defaultValue": "/mnt/azurefiles",
+        "metadata": {
+          "description": "Path inside the container where the volume will be mounted."
+        }
+      }
+    },
+    "resources": [
+      {
+        "type": "Microsoft.ContainerInstance/containerGroups",
+        "apiVersion": "2021-10-01",
+        "name": "[parameters('containerGroupName')]",
+        "location": "[resourceGroup().location]",
+        "properties": {
+          "containers": [
+            {
+              "name": "[parameters('containerName')]",
+              "properties": {
+                "image": "[parameters('image')]",
+                "resources": {
+                  "requests": {
+                    "cpu": 1.0,
+                    "memoryInGB": 1.5
+                  }
+                },
+                "volumeMounts": [
+                  {
+                    "name": "azurefilesvolume",
+                    "mountPath": "[parameters('mountPath')]"
+                  }
+                ]
+              }
+            }
+          ],
+          "osType": "Linux",
+          "restartPolicy": "OnFailure",
+          "volumes": [
+            {
+              "name": "azurefilesvolume",
+              "azureFile": {
+                "shareName": "[parameters('fileShareName')]",
+                "storageAccountName": "[parameters('storageAccountName')]",
+                "storageAccountKey": "[parameters('storageAccountKey')]"
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "outputs": {
+      "containerGroupId": {
+        "type": "string",
+        "value": "[resourceId('Microsoft.ContainerInstance/containerGroups', parameters('containerGroupName'))]"
+      }
+    }
+  }

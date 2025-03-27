@@ -1,0 +1,84 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "resources": [
+    {
+      "name": "my-postgres-app2",
+      "type": "Microsoft.App/containerApps",
+      "apiVersion": "2023-05-01",
+      "location": "eastus",
+      "properties": {
+        "managedEnvironmentId": "/subscriptions/dfe4f19e-0de2-45f1-b1e7-f1aa89766598/resourceGroups/myResourceGroup/providers/Microsoft.App/managedEnvironments/myContainerAppEnv",
+        "configuration": {
+          "secrets": [
+            {
+              "name": "postgres-password",
+              "value": "mysecretpassword"
+            },
+            {
+              "name": "storage-account-key",
+              "value": "secret"
+            }
+          ],
+          "ingress": {
+            "external": false,
+            "targetPort": 5432,
+            "transport": "tcp"
+          }
+        },
+        "template": {
+          "containers": [
+            {
+              "name": "postgres",
+              "image": "postgres:latest",
+              "resources": {
+                "cpu": 0.5,
+                "memory": "1Gi"
+              },
+              "env": [
+                {
+                  "name": "POSTGRES_USER",
+                  "value": "myuser"
+                },
+                {
+                  "name": "POSTGRES_PASSWORD",
+                  "secretRef": "postgres-password"
+                },
+                {
+                  "name": "POSTGRES_DB",
+                  "value": "mydb"
+                },
+                {
+                  "name": "PGDATA",
+                  "value": "/var/lib/postgresql/data/pgdata"
+                }
+              ],
+              "volumeMounts": [
+                {
+                  "volumeName": "postgres-storage",
+                  "mountPath": "/var/lib/postgresql/data"
+                }
+              ]
+            }
+          ],
+          "volumes": [
+            {
+              "name": "postgres-storage",
+              "storageType": "AzureFile",
+              "azureFile": {
+                "accountName": "sdrhmstoragaccount01",
+                "shareName": "myfileshare",
+                "accessMode": "ReadWrite",
+                "secretRef": "storage-account-key"
+              }
+            }
+          ],
+          "scale": {
+            "minReplicas": 1,
+            "maxReplicas": 1
+          }
+        }
+      }
+    }
+  ]
+}
