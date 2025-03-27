@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     postgres_db: str = "bank_recommendations"
     postgres_user: str = "bank_user"
     postgres_password: str
+    postgres_port: int = 5432
     postgres_host: str = "postgres"
     redis_url: str = "redis://redis:6379"
     api_key: str  # For endpoint authentication
@@ -92,12 +93,20 @@ except Exception as e:
     logger.error(f"Failed to initialize model: {str(e)}")
     raise
 
+# logger.info(f"Redis URL: {settings.redis_url}")
+# logger.info(f"API Key: {settings.api_key}")
+# logger.info(f"Database URL: {settings.postgres_db}")
+# logger.info(f"Database User: {settings.postgres_user}")
+# logger.info(f"Database Host: {settings.postgres_host}")
+# logger.info(f"Database Port: {settings.postgres_port}")
+
 # Database and Redis connections
 db_pool = psycopg2.pool.SimpleConnectionPool(1, 20,
     dbname=settings.postgres_db,
     user=settings.postgres_user,
     password=settings.postgres_password,
-    host=settings.postgres_host
+    host=settings.postgres_host,
+    port=settings.postgres_port
 )
 redis_client = redis.Redis.from_url(settings.redis_url)
 

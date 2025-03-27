@@ -3,14 +3,15 @@ version: '3.8'  # Make sure we're using a recent version
 services:
   postgres-init:
     image: postgres:latest
-    environment:
-      PGPASSWORD: your_secure_password_here
+    profiles: ["donotstart"]
     command: >
-      psql -h postgres -U bank_user -d bank_recommendations -f /init.sql
+      psql -h pg-bank-data-raheemuddin786.h.aivencloud.com -p 21094 -U avnadmin -d bank_recommendations -f /init.sql
     volumes:
       - ./init.sql:/init.sql
     networks:
       - bank_network
+    env_file:
+      - ./ml-server/.env
 
   ml-server:
     build:
@@ -58,17 +59,16 @@ services:
 
   db-ui:
     image: dpage/pgadmin4:9.1.0
+    profiles: ["donotstart"]
     restart: always
     ports:
       - 5050:80
-    environment:
-      DATABASE_URL: postgresql://bank_user:your_secure_password_here@postgres:5432/bank_recommendations
-      PGADMIN_DEFAULT_EMAIL: user@domain.com
-      PGADMIN_DEFAULT_PASSWORD: password
     volumes:
       - ./test/db/servers.json:/pgadmin4/servers.json
     networks:
       - bank_network
+    env_file:
+      - ./test/db/.env
   
   simulation:
     profiles: ["donotstart"]
@@ -90,4 +90,5 @@ services:
 
 networks:
   bank_network:
-    external: true
+    driver: bridge
+    name: bank_network

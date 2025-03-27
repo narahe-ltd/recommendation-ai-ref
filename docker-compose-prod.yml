@@ -3,17 +3,18 @@ version: '3.8'  # Make sure we're using a recent version
 services:
   postgres-init:
     image: postgres:latest
-    environment:
-      PGPASSWORD: secret
+    profiles: ["donotstart"]
     command: >
       psql -h pg-bank-data-raheemuddin786.h.aivencloud.com -p 21094 -U avnadmin -d bank_recommendations -f /init.sql
     volumes:
       - ./init.sql:/init.sql
     networks:
       - bank_network
+    env_file:
+      - ./ml-server/.env
 
   ml-server:
-    image: <your-acr>.azurecr.io/ml-server:latest
+    image: your-acr.azurecr.io/ml-server:latest
     build:
       context: ./ml-server
       dockerfile: Dockerfile
@@ -27,7 +28,7 @@ services:
       - ./ml-server/.env
 
   usage-tracker:
-    image: <your-acr>.azurecr.io/usage-tracker:latest
+    image: your-acr.azurecr.io/usage-tracker:latest
     build:
       context: ./usage-tracker
       dockerfile: Dockerfile
@@ -39,7 +40,7 @@ services:
       - ./usage-tracker/.env
 
   frontend:
-    image: <your-acr>.azurecr.io/frontend:latest
+    image: your-acr.azurecr.io/frontend:latest
     build:
       context: ./frontend
       dockerfile: Dockerfile
@@ -61,20 +62,19 @@ services:
 
   db-ui:
     image: dpage/pgadmin4:9.1.0
+    profiles: ["donotstart"]
     restart: always
     ports:
       - 5050:80
-    environment:
-      DATABASE_URL: postgresql://avnadmin:secret@pg-bank-data-raheemuddin786.h.aivencloud.com:21094/bank_recommendations
-      PGADMIN_DEFAULT_EMAIL: user@domain.com
-      PGADMIN_DEFAULT_PASSWORD: password
     volumes:
       - ./test/db/servers.json:/pgadmin4/servers.json
     networks:
       - bank_network
+    env_file:
+      - ./test/db/.env
   
   simulation:
-    image: <your-acr>.azurecr.io/simulation:latest
+    image: your-acr.azurecr.io/simulation:latest
     profiles: ["donotstart"]
     # Using the profile approach shown above: The service will be skipped by default unless explicitly included with
     # docker compose --profile donotstart up
