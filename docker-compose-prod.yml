@@ -1,17 +1,6 @@
 version: '3.8'  # Make sure we're using a recent version
 
 services:
-  postgres-init:
-    image: postgres:latest
-    profiles: ["donotstart"]
-    command: >
-      psql -h pg-bank-data-raheemuddin786.h.aivencloud.com -p 21094 -U avnadmin -d bank_recommendations -f /init.sql
-    volumes:
-      - ./init.sql:/init.sql
-    networks:
-      - bank_network
-    env_file:
-      - ./ml-server/.env
 
   ml-server:
     image: your-acr.azurecr.io/ml-server:latest
@@ -20,10 +9,6 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
-    volumes:
-      - ./ml-server/main.py:/app/main.py
-    networks:
-      - bank_network
     env_file:
       - ./ml-server/.env
 
@@ -32,10 +17,6 @@ services:
     build:
       context: ./usage-tracker
       dockerfile: Dockerfile
-    volumes:
-      - ./usage-tracker:/app
-    networks:
-      - bank_network
     env_file:
       - ./usage-tracker/.env
 
@@ -46,53 +27,14 @@ services:
       dockerfile: Dockerfile
     ports:
       - "3000:3000"
-    volumes:
-      - ./frontend/public:/app/public
-      - ./frontend/src:/app/src
-    networks:
-      - bank_network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
     env_file:
       - ./frontend/.env
 
-  db-ui:
-    image: dpage/pgadmin4:9.1.0
-    profiles: ["donotstart"]
-    restart: always
-    ports:
-      - 5050:80
-    volumes:
-      - ./test/db/servers.json:/pgadmin4/servers.json
-    networks:
-      - bank_network
-    env_file:
-      - ./test/db/.env
-  
   simulation:
     image: your-acr.azurecr.io/simulation:latest
-    profiles: ["donotstart"]
-    # Using the profile approach shown above: The service will be skipped by default unless explicitly included with
-    # docker compose --profile donotstart up
     build:
       context: ./simulation
       dockerfile: Dockerfile
     environment:
       - REDIS_URL=redis://redis:6379
       - DATABASE_URL=postgresql://bank_user:your_secure_password_here@postgres:5432/bank_recommendations
-    networks:
-      - bank_network
-    depends_on:
-      frontend:
-        condition: service_healthy
-    volumes:
-      - ./simulation:/app
-
-networks:
-  bank_network:
-    driver: bridge
-    name: bank_network
